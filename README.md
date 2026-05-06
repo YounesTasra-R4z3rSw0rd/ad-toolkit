@@ -6,12 +6,14 @@ Built during CRTE lab work and real engagements. These are small, focused utilit
 # Table of Contents
 - [decodeSid](#decodesid) — Base64 SID → `S-1-5-21-...`
 - [decodeFiletime](#decodefiletime) — Windows FILETIME → human-readable dates & durations
+- [decodeGmsaMembership](#decodegmsamembership) — gMSA security descriptor → who can read the password
 
 # Scripts
 | Script | Description |
 |---|---|
 | `decodeSid.py` | Decodes base64-encoded Active Directory SIDs (as returned by `ldapsearch`) into human-readable format (`S-1-5-21-...`) |
 | `decodeFiletime.py` | Converts Windows `FILETIME` values from AD — negative values for relative durations (`maxPwdAge`, `lockoutDuration`), positive values for absolute timestamps (`pwdLastSet`, `lastLogonTimestamp`) |
+| `decodeGmsaMembership.py` | Decodes the `msDS-GroupMSAMembership` binary security descriptor from base64 to show which principals can read a gMSA password |
 
 # decodeSid
 ## Context
@@ -52,6 +54,27 @@ python3 decodeFiletime.py 134182246383416108
 python3 decodeFiletime.py 0
 # Output: Never / Not set
 ```
+## Requirements
+* Python 3.6+
+* No external dependencies
+
+# decodeGmsaMembership
+## Context
+Group Managed Service Accounts (gMSAs) store who can read their password in the `msDS-GroupMSAMembership` attribute, a binary security descriptor. When you pull it with `ldapsearch`, you get a base64 blob.</br>
+`decodeGmsaMembership.py` parses the security descriptor and shows which SIDs have access. Unresolved domain SIDs can be looked up with a follow-up `ldapsearch` query.
+
+## Usage
+```bash
+# Get the gMSA info via ldapsearch
+ldapsearch -x -H ldap://dc.domain.local -D "USERNAME@domain.local" -w 'PASSWORD' -b "DC=domain,DC=local" "(objectClass=msDS-GroupManagedServiceAccount)" sAMAccountName dNSHostName servicePrincipalName memberOf msDS-GroupMSAMembership msDS-ManagedPasswordInterval
+
+# Decode the base64 blob (join multi-line output into one string)
+python3 decodeGmsaMembership.py "AQAEgBQAAAAEAAAAAAAUV..."
+
+# Resolve the SID to a name
+ldapsearch -x -H ldap://dc.domain.local -D "USERNAME@domain.local" -w 'PASSWORD' -b "DC=domain,DC=local" "(objectSid=S-1-5-21-...)" sAMAccountName objectClass
+```
+
 ## Requirements
 * Python 3.6+
 * No external dependencies
