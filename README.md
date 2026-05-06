@@ -6,8 +6,8 @@ Built during CRTE lab work and real engagements. These are small, focused utilit
 
 | Script | Description |
 |---|---|
-| `decode-sid.py` | Decodes base64-encoded Active Directory SIDs (as returned by `ldapsearch`) into human-readable format (`S-1-5-21-...`) |
-| `decode-sid.py` | Converts Windows `FILETIME` values (100-nanosecond intervals) from AD attributes like `maxPwdAge`, `lockoutDuration`, etc. into human-readable durations |
+| `decodeSid.py` | Decodes base64-encoded Active Directory SIDs (as returned by `ldapsearch`) into human-readable format (`S-1-5-21-...`) |
+| `decodeFiletime.py` | Converts Windows `FILETIME` values (100-nanosecond intervals) from AD attributes like `maxPwdAge`, `lockoutDuration`, etc. into human-readable durations |
 
 # decodeSID
 ## Context
