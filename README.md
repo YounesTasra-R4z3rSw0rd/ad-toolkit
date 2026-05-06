@@ -1,46 +1,57 @@
 # About
 A collection of helper scripts for Active Directory penetration testing from Linux.
+
 Built during CRTE lab work and real engagements. These are small, focused utilities that fill gaps in existing tooling — not replacements for Impacket, NetExec, or BloodHound, but things you reach for when those tools don't cover a specific need.
 
-# Scripts
+# Table of Contents
+- [decodeSid](#decodesid) — Base64 SID → `S-1-5-21-...`
+- [decodeFiletime](#decodefiletime) — Windows FILETIME → human-readable dates & durations
 
+# Scripts
 | Script | Description |
 |---|---|
 | `decodeSid.py` | Decodes base64-encoded Active Directory SIDs (as returned by `ldapsearch`) into human-readable format (`S-1-5-21-...`) |
-| `decodeFiletime.py` | Converts Windows `FILETIME` values (100-nanosecond intervals) from AD attributes like `maxPwdAge`, `lockoutDuration`, etc. into human-readable durations |
+| `decodeFiletime.py` | Converts Windows `FILETIME` values from AD — negative values for relative durations (`maxPwdAge`, `lockoutDuration`), positive values for absolute timestamps (`pwdLastSet`, `lastLogonTimestamp`) |
 
-# decodeSID
+# decodeSid
 ## Context
 When you run `ldapsearch` against a DC, attributes like `objectSid` and `securityIdentifier` come back as base64 blobs. Most guides tell you to pipe through a chain of `base64 -d | xxd | awk` — this just does it cleanly in one command.
-
 ## Usage
-
 ```bash
 # Decode a base64 SID from ldapsearch output
 python3 decodeSid.py "AQQAAAAAAAUVAAAAw5SODBZBSpaM7roJ"
 # Output: S-1-5-21-210670787-2521448726-163245708
 ```
-
 ## Requirements
-
 * Python 3.6+
 * No external dependencies
 
 # decodeFiletime
 ## Context
-When you run `ldapsearch` against a DC, attributes like `maxPwdAge`, `minPwdAge`, `lockoutDuration` and `lockoutObservationWindow` come back as negative 100-nanosecond intervals (Windows FILETIME format). Seeing `-36288000000000` and knowing it means `42 days` isn't something you do in your head — `decodeFiletime.py` handles it.
+When you run `ldapsearch` against a DC, FILETIME values come in two flavors and both are unreadable raw:
+
+* **Relative durations**: attributes like `maxPwdAge`, `minPwdAge`, `lockoutDuration` and `lockoutObservationWindow` come back as negative 100-nanosecond intervals. Seeing `-36288000000000` and knowing it means `42 days` isn't something you do in your head.
+
+* **Absolute timestamps**: attributes like `pwdLastSet`, `lastLogonTimestamp` and `accountExpires` come back as positive 100-nanosecond intervals since January 1, 1601. Seeing `134182246383416108` means nothing until you convert it.
+
+`decodeFiletime.py` detects the type automatically and converts both.
 
 ## Usage
 ```bash
-# Convert a FILETIME value from ldapsearch
+# Relative durations (negative values — policy attributes)
 python3 decodeFiletime.py -36288000000000
 # Output: 42.0 days (1008.0 hours)
 
 python3 decodeFiletime.py -18000000000
 # Output: 30 minutes
+
+# Absolute timestamps (positive values — user/computer attributes)
+python3 decodeFiletime.py 134182246383416108
+# Output: 2025-11-14 08:23:58 UTC (173 days ago)
+
+python3 decodeFiletime.py 0
+# Output: Never / Not set
 ```
-
 ## Requirements
-
 * Python 3.6+
 * No external dependencies
