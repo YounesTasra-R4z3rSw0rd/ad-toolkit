@@ -7,6 +7,7 @@ Built during CRTE lab work and real engagements. These are small, focused utilit
 - [decodeSid](#decodesid) — Base64 SID → `S-1-5-21-...`
 - [decodeFiletime](#decodefiletime) — Windows FILETIME → human-readable dates & durations
 - [decodeGmsaMembership](#decodegmsamembership) — gMSA security descriptor → who can read the password
+- [enumGPO](#enumgpo) — GPO security settings → Restricted Groups, GPP passwords, scheduled tasks, scripts
 
 # Scripts
 | Script | Description |
@@ -14,6 +15,7 @@ Built during CRTE lab work and real engagements. These are small, focused utilit
 | `decodeSid.py` | Decodes base64-encoded Active Directory SIDs (as returned by `ldapsearch`) into human-readable format (`S-1-5-21-...`) |
 | `decodeFiletime.py` | Converts Windows `FILETIME` values from AD — negative values for relative durations (`maxPwdAge`, `lockoutDuration`), positive values for absolute timestamps (`pwdLastSet`, `lastLogonTimestamp`) |
 | `decodeGmsaMembership.py` | Decodes the `msDS-GroupMSAMembership` binary security descriptor from base64 to show which principals can read a gMSA password |
+| `enumGPO.py` | Enumerates GPO security settings from SYSVOL — Restricted Groups (with SID resolution + GPO-to-OU-to-computer mapping), GPP passwords, scheduled tasks, user rights assignments, and logon/startup scripts |
 
 # decodeSid
 ## Context
@@ -78,3 +80,56 @@ ldapsearch -x -H ldap://dc.domain.local -D "USERNAME@domain.local" -w 'PASSWORD'
 ## Requirements
 * Python 3.6+
 * No external dependencies
+
+# enumGPO
+## Context
+On every internal pentest, one of the first questions is "who has local admin where?" Restricted Groups is a GPO mechanism that pushes principals into local Administrators on every machine the GPO applies to. </br>
+</br>
+BloodHound doesn't show ACL edges on OUs, and it doesn't parse SYSVOL for Restricted Groups. So this attack surface is invisible unless you check manually.</br>
+</br> 
+`enumGPO.py` does the full chain in one command: 
+1. Connects to SYSVOL via SMB
+2. Parses every GPO's `GptTmpl.inf` for Restricted Groups
+3. Resolves SIDs via LDAP
+4. Maps GPO to linked OUs
+5. Lists computers in those OUs
+6. Tells you in plain language who has local admin on which machines.
+</br>
+It also checks for GPP passwords (`cpassword`), scheduled tasks, user rights assignments, and logon/startup scripts.
+ 
+## Usage
+```bash
+# Full enumeration — Restricted Groups, GPP passwords, scheduled tasks, scripts, user rights
+proxychains -q python3 enumGPO.py -u USERNAME -p 'PASSWORD' -d domain.local -t dc01
+ 
+# Restricted Groups only — with full SID resolution and GPO-to-OU-to-computer mapping
+proxychains -q python3 enumGPO.py -u USERNAME -p 'PASSWORD' -d domain.local -t dc01 --restricted-only
+```
+ 
+Example output (`--restricted-only`):
+```
+[*] Connecting to dc01...
+[+] Authenticated as domain.local\user
+[*] Resolving GPO display names...
+ 
+======================================================================
+[+] RESTRICTED GROUPS — GPO: Mgmt ({B78BFC6B-76DB-4AA4-9CF6-26260697A8F9})
+======================================================================
+ 
+    [>] MachineAdmins (S-1-5-21-210670787-2521448726-163245708-1118)
+        is pushed into → BUILTIN\Administrators (S-1-5-32-544)
+ 
+        GPO is linked to:
+          OU: OU=Mgmt,DC=us,DC=techcorp,DC=local
+          Affected machines:
+            - US-MGMT$ (US-Mgmt.us.techcorp.local)
+ 
+    [!] SUMMARY: 'MachineAdmins' has local admin on: US-MGMT$
+ 
+[*] Done
+```
+ 
+## Requirements
+* Python 3.6+
+* Impacket (`pip install impacket`)
+* `ldapsearch` (from `ldap-utils` package — usually pre-installed on Kali)
